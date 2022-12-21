@@ -179,7 +179,7 @@ jobs:
         uses: docker/metadata-action@v3
         with:
           images: |
-            blockstack/${{ github.event.repository.name }}
+            janniksco/${{ github.event.repository.name }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -240,7 +240,7 @@ jobs:
         uses: docker/metadata-action@v3
         with:
           images: |
-            blockstack/${{ github.event.repository.name }}
+            janniksco/${{ github.event.repository.name }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
