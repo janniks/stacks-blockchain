@@ -1739,7 +1739,7 @@ impl MemPoolDB {
         nonce: u64,
     ) -> Result<Option<MemPoolTxMetadata>, db_error> {
         let sql = format!(
-            "SELECT 
+            "SELECT
                           txid,
                           origin_address,
                           origin_nonce,
@@ -2104,8 +2104,8 @@ impl MemPoolDB {
             Err(EstimatorError::NoEstimateAvailable) => None,
             Err(e) => {
                 warn!("Error while estimating mempool tx rate";
-                      "txid" => %tx.txid(),
-                      "error" => ?e);
+                      "error" => ?e,
+                      "txid" => %tx.txid());
                 return Err(MemPoolRejection::EstimatorError(e));
             }
         };
@@ -2192,8 +2192,8 @@ impl MemPoolDB {
             Err(EstimatorError::NoEstimateAvailable) => None,
             Err(e) => {
                 warn!("Error while estimating mempool tx rate";
-                      "txid" => %tx.txid(),
-                      "error" => ?e);
+                      "error" => ?e,
+                      "txid" => %tx.txid());
                 return Err(MemPoolRejection::Other(
                     "Failed to estimate mempool tx rate".into(),
                 ));

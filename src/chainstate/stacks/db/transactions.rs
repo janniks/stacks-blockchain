@@ -901,7 +901,7 @@ impl StacksChainState {
                 // Their presence in this variant makes the transaction invalid.
                 if tx.post_conditions.len() > 0 {
                     let msg = format!("Invalid Stacks transaction: TokenTransfer transactions do not support post-conditions");
-                    warn!("{}", &msg);
+                    warn!("{}", &msg; "txid" => %tx.txid());
 
                     return Err(Error::InvalidStacksTransaction(msg, false));
                 }
@@ -977,7 +977,8 @@ impl StacksChainState {
                               "function_name" => %contract_call.function_name,
                               "function_args" => %VecDisplay(&contract_call.function_args),
                               "return_value" => %return_value,
-                              "cost" => ?total_cost);
+                              "cost" => ?total_cost,
+                              "txid" => %tx.txid());
                         (return_value, asset_map, events)
                     }
                     Err(e) => match handle_clarity_runtime_error(e) {
@@ -986,14 +987,16 @@ impl StacksChainState {
                                       "contract_name" => %contract_id,
                                       "function_name" => %contract_call.function_name,
                                       "function_args" => %VecDisplay(&contract_call.function_args),
-                                      "error" => ?error);
+                                      "error" => ?error,
+                                      "txid" => %tx.txid());
                             (Value::err_none(), AssetMap::new(), vec![])
                         }
                         ClarityRuntimeTxError::AbortedByCallback(value, assets, events) => {
                             info!("Contract-call aborted by post-condition";
                                       "contract_name" => %contract_id,
                                       "function_name" => %contract_call.function_name,
-                                      "function_args" => %VecDisplay(&contract_call.function_args));
+                                      "function_args" => %VecDisplay(&contract_call.function_args),
+                                      "txid" => %tx.txid());
                             let receipt = StacksTransactionReceipt::from_condition_aborted_contract_call(
                                     tx.clone(),
                                     events,
@@ -1003,7 +1006,7 @@ impl StacksChainState {
                             return Ok(receipt);
                         }
                         ClarityRuntimeTxError::CostError(cost_after, budget) => {
-                            warn!("Block compute budget exceeded: if included, this will invalidate a block"; "txid" => %tx.txid(), "cost" => %cost_after, "budget" => %budget);
+                            warn!("Block compute budget exceeded: if included, this will invalidate a block"; "cost" => %cost_after, "budget" => %budget, "txid" => %tx.txid());
                             return Err(Error::CostOverflowError(cost_before, cost_after, budget));
                         }
                         ClarityRuntimeTxError::AnalysisError(check_error) => {
@@ -1014,7 +1017,8 @@ impl StacksChainState {
                                       "contract_name" => %contract_id,
                                       "function_name" => %contract_call.function_name,
                                       "function_args" => %VecDisplay(&contract_call.function_args),
-                                      "error" => %check_error);
+                                      "error" => %check_error,
+                                      "txid" => %tx.txid());
 
                                 let receipt =
                                     StacksTransactionReceipt::from_runtime_failure_contract_call(
@@ -1029,7 +1033,8 @@ impl StacksChainState {
                                            "contract_name" => %contract_id,
                                            "function_name" => %contract_call.function_name,
                                            "function_args" => %VecDisplay(&contract_call.function_args),
-                                           "error" => %check_error);
+                                           "error" => %check_error,
+                                           "txid" => %tx.txid());
                                 return Err(Error::ClarityError(clarity_error::Interpreter(
                                     InterpreterError::Unchecked(check_error),
                                 )));
@@ -1040,7 +1045,8 @@ impl StacksChainState {
                                        "contract_name" => %contract_id,
                                        "function_name" => %contract_call.function_name,
                                        "function_args" => %VecDisplay(&contract_call.function_args),
-                                       "error" => ?e);
+                                       "error" => ?e,
+                                       "txid" => %tx.txid());
                             return Err(Error::ClarityError(e));
                         }
                     },
@@ -1208,9 +1214,9 @@ impl StacksChainState {
                         }
                         ClarityRuntimeTxError::CostError(cost_after, budget) => {
                             warn!("Block compute budget exceeded: if included, this will invalidate a block";
-                                      "txid" => %tx.txid(),
                                       "cost" => %cost_after,
-                                      "budget" => %budget);
+                                      "budget" => %budget,
+                                      "txid" => %tx.txid());
                             return Err(Error::CostOverflowError(cost_before, cost_after, budget));
                         }
                         ClarityRuntimeTxError::AnalysisError(check_error) => {
@@ -1220,7 +1226,8 @@ impl StacksChainState {
                                 warn!("Smart-contract encountered an analysis error at runtime";
                                       "contract" => %contract_id,
                                       "code" => %contract_code_str,
-                                      "error" => %check_error);
+                                      "error" => %check_error),
+                                      "txid" => %tx.txid();
 
                                 let receipt =
                                     StacksTransactionReceipt::from_runtime_failure_smart_contract(
@@ -1235,7 +1242,8 @@ impl StacksChainState {
                                 warn!("Unexpected analysis error invalidating transaction: if included, this will invalidate a block";
                                       "contract" => %contract_id,
                                       "code" => %contract_code_str,
-                                      "error" => %check_error);
+                                      "error" => %check_error,
+                                      "txid" => %tx.txid());
                                 return Err(Error::ClarityError(clarity_error::Interpreter(
                                     InterpreterError::Unchecked(check_error),
                                 )));
@@ -1245,7 +1253,8 @@ impl StacksChainState {
                             error!("Unexpected error invalidating transaction: if included, this will invalidate a block";
                                        "contract_name" => %contract_id,
                                        "code" => %contract_code_str,
-                                       "error" => ?e);
+                                       "error" => ?e,
+                                       "txid" => %tx.txid());
                             return Err(Error::ClarityError(e));
                         }
                     },
