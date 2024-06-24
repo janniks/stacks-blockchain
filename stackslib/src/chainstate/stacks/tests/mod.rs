@@ -19,6 +19,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+use clarity::util::secp256k1::Secp256k1PublicKey;
 use clarity::vm::clarity::ClarityConnection;
 use clarity::vm::costs::LimitedCostTracker;
 use clarity::vm::types::*;
@@ -1314,6 +1315,100 @@ pub fn make_stacks_transfer_order_independent_p2sh(
     let payload =
         TransactionPayload::TokenTransfer(recipient.clone(), amount, TokenTransferMemo([0; 34]));
     sign_tx_order_independent_p2sh(payload, privks, num_sigs, nonce, tx_fee)
+}
+
+#[test]
+fn test_order_independent_p2sh() {
+    let privk1 = StacksPrivateKey::from_hex(
+        "04fbae5c79d50dc21c653ed8bf1ad53a43081f839f1ecdda9774d9170e4bb5c501",
+    )
+    .unwrap();
+    let privk2 = StacksPrivateKey::from_hex(
+        "f8cefc8e181a06ab004c722cb156e7a24f57d9b08af27f36b15fa1357d572b9301",
+    )
+    .unwrap();
+    let privk3 = StacksPrivateKey::from_hex(
+        "84e72ac806a425bdef5add21be8771c7498b5e36c235d295d8339a83daf364e3",
+    )
+    .unwrap();
+
+    // all participants of the multi-sig address
+    let privks = vec![privk1.clone(), privk2.clone(), privk3.clone()];
+    let mut pubks = privks
+        .iter()
+        .map(StacksPublicKey::from_private)
+        .collect::<Vec<Secp256k1PublicKey>>();
+
+    pubks.sort_by(|a, b| a.to_hex().cmp(&b.to_hex())); // no-op, private keys are already sorted by public key for this example
+
+    for pubk in &pubks {
+        println!("{}", pubk.to_hex());
+    }
+
+    // all signers for this tx
+    let signers = vec![privk2.clone(), privk3.clone()];
+    let signer_pubks = signers
+        .iter()
+        .map(StacksPublicKey::from_private)
+        .collect::<Vec<Secp256k1PublicKey>>();
+
+    let nonce = 0;
+    let tx_fee = 100;
+    let amount = 10000;
+    let num_sigs = 2;
+
+    let mut sender_spending_condition =
+        TransactionSpendingCondition::new_multisig_order_independent_p2sh(
+            num_sigs as u16,
+            pubks.clone(),
+        )
+        .expect("Failed to create p2sh spending condition.");
+    sender_spending_condition.set_nonce(nonce);
+    sender_spending_condition.set_tx_fee(tx_fee);
+    let auth = TransactionAuth::Standard(sender_spending_condition);
+
+    let recipient_addr_str = "ST1RFD5Q2QPK3E0F08HG9XDX7SSC7CNRS0QR0SGEV";
+    let recipient = StacksAddress::from_string(recipient_addr_str).unwrap();
+    let recipient = PrincipalData::from(recipient);
+
+    let payload = TransactionPayload::TokenTransfer(recipient, amount, TokenTransferMemo([0; 34]));
+
+    let mut unsigned_tx = StacksTransaction::new(TransactionVersion::Testnet, auth, payload);
+    unsigned_tx.anchor_mode = TransactionAnchorMode::Any;
+    unsigned_tx.post_condition_mode = TransactionPostConditionMode::Deny;
+    unsigned_tx.chain_id = 0x80000000;
+
+    let mut tx_signer = StacksTransactionSigner::new(&unsigned_tx);
+
+    // sign in reverse order (previously not possible)
+    tx_signer.sign_origin(&signers[1]).unwrap(); // privk3
+    tx_signer.sign_origin(&signers[0]).unwrap(); // privk2
+    tx_signer.append_origin(&pubks[0]).unwrap(); // privk1 (doesn't sign)
+
+    let mut signed_tx = tx_signer.get_tx().unwrap();
+
+    let condition = match &mut signed_tx.auth {
+        TransactionAuth::Standard(TransactionSpendingCondition::OrderIndependentMultisig(s)) => s,
+        _ => panic!("type error"),
+    };
+
+    // manual field sorting
+    condition.fields = vec![
+        condition.fields[2].clone(),
+        condition.fields[1].clone(),
+        condition.fields[0].clone(),
+    ];
+
+    signed_tx.verify().expect("Transaction verification failed");
+
+    let serialized_tx = to_hex(&signed_tx.serialize_to_vec());
+
+    println!("Serialized transaction: {:?}", serialized_tx);
+
+    let deserialized_tx =
+        StacksTransaction::consensus_deserialize(&mut &hex_bytes(&serialized_tx).unwrap()[..])
+            .unwrap();
+    assert_eq!(signed_tx, deserialized_tx);
 }
 
 pub fn make_stacks_transfer_order_independent_p2wsh(
